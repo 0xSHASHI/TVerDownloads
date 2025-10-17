@@ -28,7 +28,7 @@ jobs:
         run: |
           pwd
           ls
-          cp keyword.conf user_settings.ps1 TVerRec/conf/
+          cp keyword.conf user_setting.ps1 TVerRec/conf/
 
       - name: Install PowerShell
         env:
