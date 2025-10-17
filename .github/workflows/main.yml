@@ -25,7 +25,10 @@ jobs:
         run: mkdir -p TVerRec/downloads TVerRec/temp TVerRec/save
 
       - name: Copy configurations
-        run: cp keyword.conf user_settings.ps1 TVerRec/conf/
+        run: |
+          pwd
+          ls
+          cp keyword.conf user_settings.ps1 TVerRec/conf/
 
       - name: Install PowerShell
         env:
