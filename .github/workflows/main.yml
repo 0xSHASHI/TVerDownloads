@@ -41,34 +41,21 @@ jobs:
           rm packages-microsoft-prod.deb
           sudo apt-get update
           sudo apt-get install -y powershell
-          
+  
       - name: Install WireGuard
-        run: sudo apt-get update && sudo apt-get install -y wireguard
+        run: sudo apt-get update && sudo apt install -y wireguard
 
-      - name: Write private key
+      - name: Configure WireGuard
         run: |
-          echo "${{ secrets.WG_PRIVATE_KEY }}" > privatekey
-          chmod 600 privatekey
+          echo "${{ secrets.WIREGUARD_CONF }}" | sudo tee /etc/wireguard/wg0.conf > /dev/null
+          sudo chmod 600 /etc/wireguard/wg0.conf
+          sudo wg-quick up wg0
 
-      - name: Setup wg0 interface
+      - name: Check VPN connection
         run: |
-          sudo ip link add dev wg0 type wireguard
-          sudo ip address add dev wg0 10.2.0.2 peer 10.2.0.1
-
-      - name: Configure WireGuard peer
-        run: |
-          sudo wg set wg0 \
-            listen-port 51820 \
-            private-key privatekey \
-            peer ${{ secrets.WG_PEER_PUBLIC_KEY }} \
-            allowed-ips 0.0.0.0/0,::/0 \
-            endpoint 138.199.21.216:51820
-
-      - name: Bring interface up
-        run: sudo ip link set up dev wg0
-
-      - name: Test connectivity
-        run: curl -v http://10.2.0.1
+          sudo wg show
+          ip addr show wg0
+          ping -c 3 10.2.0.1 || true
 
       - name: Run the download
         working-directory: ./TVerRec
@@ -81,7 +68,7 @@ jobs:
 
       - name: Compress downloads
         run: |
-          zip -r tver-downloads-${{ env.ARTIFACT_DATE }}.zip TVerRec/downloads
+          zip -r tver-downloads-$env.ARTIFACT_DATE }}.zip TVerRec/downloads
 
       - name: Create GitHub Release and Upload Asset
         uses: softprops/action-gh-release@v1
@@ -91,3 +78,7 @@ jobs:
           files: tver-downloads-${{ env.ARTIFACT_DATE }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tear down VPN
+        if: always()
+        run: sudo wg-quick down wg0
