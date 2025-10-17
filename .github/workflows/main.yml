@@ -8,15 +8,16 @@ on:
 jobs:
   download-and-upload:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Clone this repository
+      - name: Checkout this repo
         uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Clone TVerRec repository
+      - name: Checkout TVerRec
         uses: actions/checkout@v4
-        with: 
+        with:
           repository: dongaba/TVerRec
           ref: master
           path: TVerRec
@@ -25,10 +26,7 @@ jobs:
         run: mkdir -p TVerRec/downloads TVerRec/temp TVerRec/save
 
       - name: Copy configurations
-        run: |
-          pwd
-          ls
-          cp keyword.conf user_setting.ps1 TVerRec/conf/
+        run: cp keyword.conf user_setting.ps1 TVerRec/conf/
 
       - name: Install PowerShell
         env:
@@ -37,40 +35,46 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget apt-transport-https software-properties-common
           wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
-          sudo dpkg -i --force-confnew packages-microsoft-prod.deb
+          sudo dpkg -i packages-microsoft-prod.deb
           rm packages-microsoft-prod.deb
           sudo apt-get update
           sudo apt-get install -y powershell
-  
-      - name: Install WireGuard
-        run: sudo apt-get update && sudo apt install -y wireguard
 
-      - name: Configure WireGuard
+      - name: Install WireGuard
+        run: sudo apt-get update && sudo apt-get install -y wireguard
+
+      - name: Setup and Connect to WireGuard
         run: |
           echo "${{ secrets.WIREGUARD_CONF }}" | sudo tee /etc/wireguard/wg0.conf > /dev/null
           sudo chmod 600 /etc/wireguard/wg0.conf
           sudo wg-quick up wg0
 
-      - name: Check VPN connection
+      - name: Verify WireGuard connection
         run: |
+          echo "Checking VPN connection..."
           sudo wg show
-          ip addr show wg0
-          ping -c 3 10.2.0.1 || true
+          # Wait a bit for handshake
+          sleep 5
+          WG_STATUS=$(sudo wg show wg0 latest-handshakes | awk '{print $2}')
+          if [ -z "$WG_STATUS" ] || [ "$WG_STATUS" -eq 0 ]; then
+            echo "❌ VPN handshake failed — not connected."
+            exit 1
+          else
+            echo "✅ VPN connected successfully."
+          fi
 
-      - name: Run the download
+      - name: Run TVerRec download
         working-directory: ./TVerRec
-        run: |
-         pwsh src/download_bulk.ps1
+        run: pwsh src/download_bulk.ps1
 
       - name: Set artifact date
         id: set_artifact_date
         run: echo "ARTIFACT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
 
       - name: Compress downloads
-        run: |
-          zip -r tver-downloads-$env.ARTIFACT_DATE }}.zip TVerRec/downloads
+        run: zip -r tver-downloads-${{ env.ARTIFACT_DATE }}.zip TVerRec/downloads
 
-      - name: Create GitHub Release and Upload Asset
+      - name: Release results
         uses: softprops/action-gh-release@v1
         with:
           tag_name: tver-${{ env.ARTIFACT_DATE }}
@@ -78,7 +82,3 @@ jobs:
           files: tver-downloads-${{ env.ARTIFACT_DATE }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Tear down VPN
-        if: always()
-        run: sudo wg-quick down wg0
